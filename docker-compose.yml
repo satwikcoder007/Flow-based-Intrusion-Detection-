@@ -1,26 +1,37 @@
-version: '3.8'
-
-services:
-
-  iot_device:
-    build: ./iot_device
-    container_name: iot_device
-    volumes:
-      - ./traffic_data:/shared
-    networks:
-      - iot_net
-
-  iot_server:
-    build: ./iot_server
-    container_name: iot_server
-    networks:
-      - iot_net
-    ports:
-      - "8080:8080"
-
 networks:
   iot_net:
-    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
 
-volumes:
-  traffic_data:
+services:
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    cap_add:
+      - NET_RAW
+    healthcheck:
+      test: ["CMD-SHELL", "sleep 1"]
+      interval: 5s
+      retries: 1
+    networks:
+      iot_net:
+        ipv4_address: 172.30.0.2
+
+  device1:
+    build: ./iot_device
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      iot_net:
+        ipv4_address: 172.30.0.10
+
+  device2:
+    build: ./iot_device
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      iot_net:
+        ipv4_address: 172.30.0.11
