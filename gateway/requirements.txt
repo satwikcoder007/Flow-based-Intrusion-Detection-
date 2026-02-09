@@ -1,5 +1,5 @@
 scikit-learn
-ipykernel
 pandas
 numpy
+cicflowmeter
 requests
