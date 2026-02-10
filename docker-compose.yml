@@ -10,16 +10,22 @@ services:
     container_name: gateway
     cap_add:
       - NET_RAW
+    env_file:
+      - net_config.env
     healthcheck:
       test: ["CMD-SHELL", "sleep 1"]
       interval: 5s
       retries: 1
+    volumes:
+      - ./traffic_data:/app/data
     networks:
       iot_net:
         ipv4_address: 172.30.0.2
 
   device1:
     build: ./iot_device
+    env_file:
+      - net_config.env
     depends_on:
       gateway:
         condition: service_healthy
@@ -29,6 +35,8 @@ services:
 
   device2:
     build: ./iot_device
+    env_file:
+      - net_config.env
     depends_on:
       gateway:
         condition: service_healthy

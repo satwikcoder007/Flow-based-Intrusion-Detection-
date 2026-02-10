@@ -1,37 +1,37 @@
-FROM ubuntu:22.04
+FROM python:3.12-slim
 
-# Prevent interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
-
-# Define environment variables required for pcap and flow files
 ENV PCAP_DIR=/app/data/pcaps
 ENV FLOW_DIR=/app/data/flows
+ENV FLOW_ARCHIVE_DIR=/app/data/flows_archive
 
-# 1. Install System Dependencies
-# We keep libpcap-dev because the python wrapper still needs the C libraries
+# Install system tools needed for packet capture
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    libpcap-dev \
     tcpdump \
+    libpcap-dev \
     iproute2 \
     net-tools \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# Install Python deps for your gateway
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 3. Setup directories for IDS data
-RUN mkdir -p ${PCAP_DIR} ${FLOW_DIR}
+# Install CICFlowMeter
+RUN git clone https://github.com/hieulw/cicflowmeter.git /opt/cicflowmeter
+WORKDIR /opt/cicflowmeter
+RUN pip install .
 
-# 4. Copy application code
+# Create data folders
+WORKDIR /app
+RUN mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR}
+
+# Copy your app
 COPY gateway.py .
 COPY run.sh .
-# COPY model.pkl .
-
-# Ensure run.sh is executable
 RUN chmod +x run.sh
 
 CMD ["bash", "run.sh"]

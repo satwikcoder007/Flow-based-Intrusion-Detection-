@@ -9,12 +9,12 @@ set -euo pipefail
 # iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
 # Create output directories
-mkdir -p ${PCAP_DIR} ${FLOW_DIR}
+mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR}
 
 echo "[*] Starting packet capture (Rotating every 15 seconds)"
-# -G 15: Rotate file every 15 seconds
+# -G 15: Rotate file every 60 seconds
 # -w ..._%S.pcap: Ensures unique filenames based on timestamp
-tcpdump -i eth0 -G 15 -w ${PCAP_DIR}/traffic_%Y%m%d%H%M%S.pcap -Z root &
+tcpdump -i eth0 -s 0 -G 60 -U -w ${PCAP_DIR}/traffic_%Y%m%d%H%M%S.pcap -Z root &
 TCPDUMP_PID=$!
 
 # Brief pause to let tcpdump initialize

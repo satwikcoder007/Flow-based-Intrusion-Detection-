@@ -1,4 +1,5 @@
 import selectors
+import shutil
 import signal
 import socket
 import struct
@@ -15,7 +16,7 @@ GATEWAY_IP = os.getenv("GATEWAY_IP", "172.30.0.2")
 GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", 9999))
 PCAP_DIR = os.getenv("PCAP_DIR", "/app/data/pcaps")
 FLOW_DIR = os.getenv("FLOW_DIR", "/app/data/flows")
-CIC_SCRIPT = os.getenv("CIC_SCRIPT", "/app/cicflowmeter/bin/CICFlowMeter")
+FLOW_ARCHIVE_DIR = os.getenv("FLOW_ARCHIVE_DIR", "/app/data/flows_archive")
 
 # Setup Logging
 logging.basicConfig(
@@ -61,6 +62,7 @@ class TrafficAnalyzer(threading.Thread):
         base_name = os.path.basename(target_pcap)
         # Define specific output CSV path for the Python tool
         output_csv = os.path.join(FLOW_DIR, f"{base_name}.csv")
+        archive_csv = os.path.join(FLOW_ARCHIVE_DIR, f"{base_name}.csv")
 
         logging.info(f"[Analyzer] Extracting flows from {base_name}...")
 
@@ -69,13 +71,23 @@ class TrafficAnalyzer(threading.Thread):
             cmd = ["cicflowmeter", "-f", target_pcap, "-c", output_csv]
 
             # We run this synchronously within the thread
-            subprocess.run(cmd, check=True, capture_output=True)
+            result =subprocess.run(cmd, check=True, capture_output=True)
+
+            if result.returncode != 0:
+                logging.error(f"[Analyzer] CICFlowMeter failed: {result.stderr}")
+                return
 
             if os.path.exists(output_csv):
                 self.analyze_flow(output_csv)
-                os.remove(output_csv)  # Clean up CSV after processing
+                shutil.move(output_csv, archive_csv)  # Archive processed CSV
             else:
-                logging.warning(f"[Analyzer] Failed to generate CSV for {base_name}")
+                # Sometimes cicflowmeter appends '_Flow.csv' to the name automatically
+                autoname = output_csv.replace(".csv", ".pcap_Flow.csv")
+                if os.path.exists(autoname):
+                    self.analyze_flow(autoname)
+                    shutil.move(autoname, archive_csv)
+                else:
+                    logging.warning(f"[Analyzer] CSV not found at {output_csv}")
 
         except subprocess.CalledProcessError as e:
             logging.error(f"[Analyzer] CLI Error: {e.stderr.decode()}")
