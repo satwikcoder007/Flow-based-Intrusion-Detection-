@@ -6,7 +6,9 @@ networks:
 
 services:
   gateway:
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
     container_name: gateway
     cap_add:
       - NET_RAW

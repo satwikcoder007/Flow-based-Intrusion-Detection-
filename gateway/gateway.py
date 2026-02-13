@@ -10,6 +10,8 @@ import glob
 import subprocess
 import pandas as pd
 import logging
+import joblib
+import collections
 
 # --- Configuration ---
 GATEWAY_IP = os.getenv("GATEWAY_IP", "172.30.0.2")
@@ -17,6 +19,28 @@ GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", 9999))
 PCAP_DIR = os.getenv("PCAP_DIR", "/app/data/pcaps")
 FLOW_DIR = os.getenv("FLOW_DIR", "/app/data/flows")
 FLOW_ARCHIVE_DIR = os.getenv("FLOW_ARCHIVE_DIR", "/app/data/flows_archive")
+
+COLUMN_RENAME_MAP = {
+    "pkt_size_avg": "Average Packet Size",
+    "pkt_len_std": "Packet Length Std",
+    "totlen_fwd_pkts": "Total Length of Fwd Packets",
+    "totlen_bwd_pkts": "Total Length of Bwd Packets",
+    "init_fwd_win_byts": "Init_Win_bytes_forward",
+    "bwd_seg_size_avg": "Avg Bwd Segment Size",
+    "flow_duration": "Flow Duration",
+    "dst_port": "Destination Port"
+}
+FEATURE_COLUMNS = [
+    "Average Packet Size",
+    "Packet Length Std",
+    "Total Length of Fwd Packets",
+    "Total Length of Bwd Packets",
+    "Init_Win_bytes_forward",
+    "Avg Bwd Segment Size",
+    "Flow Duration",
+    "Destination Port"
+]
+
 
 # Setup Logging
 logging.basicConfig(
@@ -32,12 +56,13 @@ class TrafficAnalyzer(threading.Thread):
     def __init__(self):
         super().__init__()
         self.daemon = True  # Kills thread when main program exits
-        self.model = None  # self.load_model("model.pkl")
+        self.model = self.load_model("/app/model.pkl")
+        logging.info(f"Model type: {type(self.model)}")
+
 
     def load_model(self, path):
-        # import joblib
-        # return joblib.load(path)
-        return "MOCK_MODEL"
+        logging.info("[ML] Loading model...")
+        return joblib.load(path)
 
     def run(self):
         logging.info("[Analyzer] Worker started. Watching for PCAPs...")
@@ -100,17 +125,13 @@ class TrafficAnalyzer(threading.Thread):
             df = pd.read_csv(csv_path)
             if df.empty:
                 return
-
-            # --- PREPROCESSING HERE ---
-            # e.g., Drop unneeded columns, scale features, handle NaNs
-            # features = preprocess(df)
-
-            # --- INFERENCE HERE ---
-            # prediction = self.model.predict(features)
-            # logging.info(f"[ML] Prediction for {csv_path}: {prediction}")
+            df = df.rename(columns=COLUMN_RENAME_MAP)
+            df = df[FEATURE_COLUMNS]
+            preds = self.model.predict(df)
+            counter = collections.Counter(preds)
 
             logging.info(
-                f"[ML] Analyzed {len(df)} flows from {os.path.basename(csv_path)}"
+                f"[ML] Results from {os.path.basename(csv_path)} → {dict(counter)}"
             )
 
         except Exception as e:

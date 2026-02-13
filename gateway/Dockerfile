@@ -30,8 +30,10 @@ WORKDIR /app
 RUN mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR}
 
 # Copy your app
-COPY gateway.py .
-COPY run.sh .
+COPY gateway/gateway.py .
+COPY gateway/run.sh .
+COPY model/models/model.pkl /app/model.pkl
+
 RUN chmod +x run.sh
 
 CMD ["bash", "run.sh"]
