@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PCAP_DIR=/app/data/pcaps
 ENV FLOW_DIR=/app/data/flows
 ENV FLOW_ARCHIVE_DIR=/app/data/flows_archive
+ENV RESULT_DIR=/app/data/results
 
 # Install system tools needed for packet capture
 RUN apt-get update && apt-get install -y \
@@ -27,7 +28,7 @@ RUN pip install .
 
 # Create data folders
 WORKDIR /app
-RUN mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR}
+RUN mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR} ${RESULT_DIR}
 
 # Copy your app
 COPY gateway/gateway.py .

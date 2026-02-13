@@ -9,7 +9,7 @@ set -euo pipefail
 # iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
 # Create output directories
-mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR}
+mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR} ${RESULT_DIR}
 
 echo "[*] Starting packet capture (Rotating every 15 seconds)"
 # -G 15: Rotate file every 60 seconds

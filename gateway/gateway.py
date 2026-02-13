@@ -19,6 +19,8 @@ GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", 9999))
 PCAP_DIR = os.getenv("PCAP_DIR", "/app/data/pcaps")
 FLOW_DIR = os.getenv("FLOW_DIR", "/app/data/flows")
 FLOW_ARCHIVE_DIR = os.getenv("FLOW_ARCHIVE_DIR", "/app/data/flows_archive")
+RESULT_DIR = os.getenv("RESULT_DIR", "/app/data/results")
+
 
 COLUMN_RENAME_MAP = {
     "pkt_size_avg": "Average Packet Size",
@@ -122,6 +124,7 @@ class TrafficAnalyzer(threading.Thread):
 
     def analyze_flow(self, csv_path):
         try:
+            result_csv = os.path.join(RESULT_DIR, "result.csv")
             df = pd.read_csv(csv_path)
             if df.empty:
                 return
@@ -130,8 +133,17 @@ class TrafficAnalyzer(threading.Thread):
             preds = self.model.predict(df)
             counter = collections.Counter(preds)
 
+            new_df = pd.DataFrame(counter.items(), columns=["label", "count"])
+            if os.path.exists(result_csv):
+                old_df = pd.read_csv(result_csv)
+                combined = pd.concat([old_df, new_df])
+                final_df = combined.groupby("label", as_index=False)["count"].sum()
+            else:
+                final_df = new_df
+            
+            final_df.to_csv(result_csv, index=False)
             logging.info(
-                f"[ML] Results from {os.path.basename(csv_path)} → {dict(counter)}"
+                f"[ML] Analyzed flows from {os.path.basename(csv_path)}"
             )
 
         except Exception as e:
