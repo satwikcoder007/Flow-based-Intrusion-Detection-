@@ -1,4 +1,5 @@
 import selectors
+import shutil
 import signal
 import socket
 import struct
@@ -9,13 +10,39 @@ import glob
 import subprocess
 import pandas as pd
 import logging
+import joblib
+import collections
 
 # --- Configuration ---
 GATEWAY_IP = os.getenv("GATEWAY_IP", "172.30.0.2")
 GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", 9999))
 PCAP_DIR = os.getenv("PCAP_DIR", "/app/data/pcaps")
 FLOW_DIR = os.getenv("FLOW_DIR", "/app/data/flows")
-CIC_SCRIPT = os.getenv("CIC_SCRIPT", "/app/cicflowmeter/bin/CICFlowMeter")
+FLOW_ARCHIVE_DIR = os.getenv("FLOW_ARCHIVE_DIR", "/app/data/flows_archive")
+RESULT_DIR = os.getenv("RESULT_DIR", "/app/data/results")
+
+
+COLUMN_RENAME_MAP = {
+    "pkt_size_avg": "Average Packet Size",
+    "pkt_len_std": "Packet Length Std",
+    "totlen_fwd_pkts": "Total Length of Fwd Packets",
+    "totlen_bwd_pkts": "Total Length of Bwd Packets",
+    "init_fwd_win_byts": "Init_Win_bytes_forward",
+    "bwd_seg_size_avg": "Avg Bwd Segment Size",
+    "flow_duration": "Flow Duration",
+    "dst_port": "Destination Port"
+}
+FEATURE_COLUMNS = [
+    "Average Packet Size",
+    "Packet Length Std",
+    "Total Length of Fwd Packets",
+    "Total Length of Bwd Packets",
+    "Init_Win_bytes_forward",
+    "Avg Bwd Segment Size",
+    "Flow Duration",
+    "Destination Port"
+]
+
 
 # Setup Logging
 logging.basicConfig(
@@ -31,12 +58,13 @@ class TrafficAnalyzer(threading.Thread):
     def __init__(self):
         super().__init__()
         self.daemon = True  # Kills thread when main program exits
-        self.model = None  # self.load_model("model.pkl")
+        self.model = self.load_model("/app/model.pkl")
+        logging.info(f"Model type: {type(self.model)}")
+
 
     def load_model(self, path):
-        # import joblib
-        # return joblib.load(path)
-        return "MOCK_MODEL"
+        logging.info("[ML] Loading model...")
+        return joblib.load(path)
 
     def run(self):
         logging.info("[Analyzer] Worker started. Watching for PCAPs...")
@@ -61,6 +89,7 @@ class TrafficAnalyzer(threading.Thread):
         base_name = os.path.basename(target_pcap)
         # Define specific output CSV path for the Python tool
         output_csv = os.path.join(FLOW_DIR, f"{base_name}.csv")
+        archive_csv = os.path.join(FLOW_ARCHIVE_DIR, f"{base_name}.csv")
 
         logging.info(f"[Analyzer] Extracting flows from {base_name}...")
 
@@ -69,13 +98,23 @@ class TrafficAnalyzer(threading.Thread):
             cmd = ["cicflowmeter", "-f", target_pcap, "-c", output_csv]
 
             # We run this synchronously within the thread
-            subprocess.run(cmd, check=True, capture_output=True)
+            result =subprocess.run(cmd, check=True, capture_output=True)
+
+            if result.returncode != 0:
+                logging.error(f"[Analyzer] CICFlowMeter failed: {result.stderr}")
+                return
 
             if os.path.exists(output_csv):
                 self.analyze_flow(output_csv)
-                os.remove(output_csv)  # Clean up CSV after processing
+                shutil.move(output_csv, archive_csv)  # Archive processed CSV
             else:
-                logging.warning(f"[Analyzer] Failed to generate CSV for {base_name}")
+                # Sometimes cicflowmeter appends '_Flow.csv' to the name automatically
+                autoname = output_csv.replace(".csv", ".pcap_Flow.csv")
+                if os.path.exists(autoname):
+                    self.analyze_flow(autoname)
+                    shutil.move(autoname, archive_csv)
+                else:
+                    logging.warning(f"[Analyzer] CSV not found at {output_csv}")
 
         except subprocess.CalledProcessError as e:
             logging.error(f"[Analyzer] CLI Error: {e.stderr.decode()}")
@@ -85,20 +124,26 @@ class TrafficAnalyzer(threading.Thread):
 
     def analyze_flow(self, csv_path):
         try:
+            result_csv = os.path.join(RESULT_DIR, "result.csv")
             df = pd.read_csv(csv_path)
             if df.empty:
                 return
+            df = df.rename(columns=COLUMN_RENAME_MAP)
+            df = df[FEATURE_COLUMNS]
+            preds = self.model.predict(df)
+            counter = collections.Counter(preds)
 
-            # --- PREPROCESSING HERE ---
-            # e.g., Drop unneeded columns, scale features, handle NaNs
-            # features = preprocess(df)
-
-            # --- INFERENCE HERE ---
-            # prediction = self.model.predict(features)
-            # logging.info(f"[ML] Prediction for {csv_path}: {prediction}")
-
+            new_df = pd.DataFrame(counter.items(), columns=["label", "count"])
+            if os.path.exists(result_csv):
+                old_df = pd.read_csv(result_csv)
+                combined = pd.concat([old_df, new_df])
+                final_df = combined.groupby("label", as_index=False)["count"].sum()
+            else:
+                final_df = new_df
+            
+            final_df.to_csv(result_csv, index=False)
             logging.info(
-                f"[ML] Analyzed {len(df)} flows from {os.path.basename(csv_path)}"
+                f"[ML] Analyzed flows from {os.path.basename(csv_path)}"
             )
 
         except Exception as e:
