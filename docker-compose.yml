@@ -1,10 +1,7 @@
-networks:
-  iot_net:
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
+version: "3.8"
 
 services:
+
   gateway:
     build:
       context: .
@@ -45,3 +42,21 @@ services:
     networks:
       iot_net:
         ipv4_address: 172.30.0.11
+
+  attacker_device:
+    build: ./attacker_device
+    container_name: attacker_device
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks:
+      iot_net:
+        ipv4_address: 172.30.0.12
+
+
+networks:
+  iot_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
