@@ -8,6 +8,7 @@ services:
       dockerfile: gateway/Dockerfile
     container_name: gateway
     cap_add:
+      - NET_ADMIN
       - NET_RAW
     env_file:
       - net_config.env
@@ -46,6 +47,9 @@ services:
   attacker_device:
     build: ./attacker_device
     container_name: attacker_device
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     depends_on:
       gateway:
         condition: service_healthy

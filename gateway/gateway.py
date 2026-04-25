@@ -12,7 +12,8 @@ import pandas as pd
 import logging
 import joblib
 import collections
-
+from collections import defaultdict, deque
+from firewall import FirewallManager    
 # --- Configuration ---
 GATEWAY_IP = os.getenv("GATEWAY_IP", "172.30.0.2")
 GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", 9999))
@@ -30,7 +31,9 @@ COLUMN_RENAME_MAP = {
     "init_fwd_win_byts": "Init_Win_bytes_forward",
     "bwd_seg_size_avg": "Avg Bwd Segment Size",
     "flow_duration": "Flow Duration",
-    "dst_port": "Destination Port"
+    "dst_port": "Destination Port",
+    "src_ip": "Source IP",
+    "timestamp": "Timestamp"
 }
 FEATURE_COLUMNS = [
     "Average Packet Size",
@@ -44,7 +47,7 @@ FEATURE_COLUMNS = [
 ]
 
 
-# Setup Logging
+# Setup Loggingga
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
@@ -60,6 +63,10 @@ class TrafficAnalyzer(threading.Thread):
         self.daemon = True  # Kills thread when main program exits
         self.model = self.load_model("/app/model.pkl")
         logging.info(f"Model type: {type(self.model)}")
+        self.ip_flow_times = defaultdict(deque)
+        self.DOS_WINDOW = 2  
+        self.DOS_THRESHOLD = 200 
+        self.firewall = FirewallManager() 
 
 
     def load_model(self, path):
@@ -129,9 +136,35 @@ class TrafficAnalyzer(threading.Thread):
             if df.empty:
                 return
             df = df.rename(columns=COLUMN_RENAME_MAP)
-            df = df[FEATURE_COLUMNS]
-            preds = self.model.predict(df)
-            counter = collections.Counter(preds)
+            final_labels = []
+
+            for _, row in df.iterrows():
+                src_ip = row["Source IP"]
+                ts = pd.to_datetime(row["Timestamp"]).timestamp()
+
+                dq = self.ip_flow_times[src_ip]
+                dq.append(ts)
+
+                
+                while dq and ts - dq[0] > self.DOS_WINDOW:
+                    dq.popleft()
+
+                flow_count = len(dq)
+
+                
+                if flow_count > self.DOS_THRESHOLD:
+                    final_labels.append("DOS")
+                    self.firewall.block_ip_temporarily(src_ip, duration=300)
+                else:
+                    
+                    features = pd.DataFrame([row[FEATURE_COLUMNS]])
+                    pred = self.model.predict(features)[0]
+                    final_labels.append(pred)
+                    if(pred != "NORMAL"):
+                        self.firewall.block_ip_temporarily(src_ip, duration=300)
+
+
+            counter = collections.Counter(final_labels)
 
             new_df = pd.DataFrame(counter.items(), columns=["label", "count"])
             if os.path.exists(result_csv):
@@ -148,6 +181,7 @@ class TrafficAnalyzer(threading.Thread):
 
         except Exception as e:
             logging.error(f"[Analyzer] CSV processing error: {e}")
+    
 
 
 # --- Networking Logic (Existing) ---

@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     tcpdump \
     libpcap-dev \
     iproute2 \
+    iptables \
     net-tools \
     git \
     && rm -rf /var/lib/apt/lists/*
@@ -33,6 +34,7 @@ RUN mkdir -p ${PCAP_DIR} ${FLOW_DIR} ${FLOW_ARCHIVE_DIR} ${RESULT_DIR}
 # Copy your app
 COPY gateway/gateway.py .
 COPY gateway/run.sh .
+COPY gateway/firewall.py .
 COPY model/models/model.pkl /app/model.pkl
 
 RUN chmod +x run.sh
